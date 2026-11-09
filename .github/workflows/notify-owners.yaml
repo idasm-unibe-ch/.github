@@ -1,0 +1,57 @@
+name: Notify Owners on Access & Membership Changes
+
+on:
+  organization:
+    types: [member_added, member_invited]
+  repository_collaborator:
+    types: [added, edited]
+
+jobs:
+  create-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process Security Event and Create Issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.ORG_ADMIN_TOKEN }}
+          script: |
+            const eventName = context.eventName;
+            let title = '';
+            let body = '';
+            
+            if (eventName === 'organization') {
+              const memberName = context.payload.membership.user.login;
+              const role = context.payload.membership.role;
+              const actionType = context.payload.action;
+              
+              title = `🚨 Security Alert: New ${role} added to the organization`;
+              body = `Hello @idasm-unibe-ch/owners,\n\n` +
+                     `A global membership change has been detected in the organization:\n` +
+                     `- **User:** @${memberName}\n` +
+                     `- **Role:** ${role}\n` +
+                     `- **Action:** ${actionType === 'member_added' ? 'Directly added' : 'Invited'}\n\n` +
+                     `Please review this access in the organization admin panel.`;
+                     
+            } else if (eventName === 'repository_collaborator') {
+              const targetRepo = context.payload.repository.name;
+              const collaborator = context.payload.collaborator.login;
+              const actionType = context.payload.action;
+              
+              title = `🔒 Security Alert: Repository Access Changed (${targetRepo})`;
+              body = `Hello @idasm-unibe-ch/owners,\n\n` +
+                     `A direct repository collaborator permission change has been detected:\n` +
+                     `- **Target Repository:** idasm-unibe-ch/${targetRepo}\n` +
+                     `- **Collaborator:** @${collaborator}\n` +
+                     `- **Action Type:** Access right was **${actionType}**\n\n` +
+                     `Please review the repository's settings to ensure this modification is authorized:\n` +
+                     `👉 https://github.com{targetRepo}/settings/access`;
+            }
+
+            if (title && body) {
+              await github.rest.issues.create({
+                owner: 'idasm-unibe-ch',
+                repo: 'unibe-web-mobile',
+                title: title,
+                body: body
+              });
+            }
